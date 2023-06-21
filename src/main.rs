@@ -1,10 +1,9 @@
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{web, App, HttpResponse, HttpServer};
 use bcrypt::{hash, verify, DEFAULT_COST};
-
-// In memory storage for simplicity
-
+use std::sync::Mutex;
+// In-memory storage for simplicity
 struct AppState {
-    user: Vec<User>,
+    users: Mutex<Vec<User>>,
 }
 
 struct User {
@@ -12,43 +11,52 @@ struct User {
     password_hash: String,
 }
 
-async fn register_user(data: web::Json<RegisterRequest>, state: web::Data<AppState>) -> HttpResponder {
-    let mut users = state.user.lock().unwrap();
+async fn register_user(data: web::Json<RegisterRequest>, state: web::Data<AppState>) -> HttpResponse {
+    let mut users = state.users.lock().unwrap();
 
-    // check if the username is already taken
+    // Check if the username is already taken
     if users.iter().any(|user| user.username == data.username) {
-        return HttpResponse::BadRequest().body("Username already taken");
+        return HttpResponse::Conflict().body("Username already taken");
     }
 
-    // hash the password
+    // Hash the password
     let password_hash = match hash(&data.password, DEFAULT_COST) {
         Ok(hash) => hash,
-        Err(_) => return HttpResponse::InternalServerError().body("Failed to hash password").finish(),
+        Err(_) => return HttpResponse::InternalServerError().finish(),
     };
-    let user =  User {
+
+    // Create a new user
+    let user = User {
         username: data.username.clone(),
         password_hash,
     };
-    // store the user in state
+
+    // Store the user in the state
     users.push(user);
-    HttpResponse::Ok().body("User registered Successfully")
+
+    HttpResponse::Ok().body("User registered successfully")
 }
 
-async fn login_user(data: web::Json<LoginRequest>, state: web::Data<AppState>) -> HttpResponder {
-    let users = state.user.lock().unwrap();
+async fn login_user(data: web::Json<LoginRequest>, state: web::Data<AppState>) -> HttpResponse {
+    let users = state.users.lock().unwrap();
 
-    // find the user
+    // Find the user by username
     let user = match users.iter().find(|user| user.username == data.username) {
         Some(user) => user,
-        None => return HttpResponse::BadRequest().body("Invalid username or password"),
+        None => return HttpResponse::NotFound().body("User not found"),
     };
 
-    // verify the password
-    if !verify(&data.password, &user.password_hash).unwrap_or(false) {
-        return HttpResponse::BadRequest().body("Invalid username or password");
-    }
+    // Verify the password
+    let password_match = match verify(&data.password, &user.password_hash) {
+        Ok(matched) => matched,
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+    };
 
-    HttpResponse::Ok().body("Login Successful")
+    if password_match {
+        HttpResponse::Ok().body("Login successful")
+    } else {
+        HttpResponse::Unauthorized().body("Invalid password")
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -64,27 +72,16 @@ struct LoginRequest {
 }
 
 #[actix_web::main]
-fn main() -> std::io::Result<()> {
-    //create initial state
-    let app_state = web::Data::new(AppState {
-        user: Ve![],
-    });
+async fn main() -> std::io::Result<()> {
+    // Create the initial state
+    let app_state = web::Data::new(AppState { users: Mutex::new(vec![]) });
 
-    //start the HTTP server
+    // Start the HTTP server
     HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
-            .service(
-                web::scope("/api")
-                    .service(
-                        web::resource("/register")
-                            .route(web::post().to(register_user))
-                    )
-                    .service(
-                        web::resource("/login")
-                            .route(web::post().to(login_user))
-                    )
-            )
+            .service(web::resource("/register").route(web::post().to(register_user)))
+            .service(web::resource("/login").route(web::post().to(login_user)))
     })
     .bind("127.0.0.1:8080")?
     .run()
