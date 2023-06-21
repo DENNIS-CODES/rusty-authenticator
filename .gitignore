@@ -1,1 +1,24 @@
-/target
+# Compiled binary files
+/target/
+
+# Dependency directories
+Cargo.lock
+Cargo.toml.orig
+/vendor/
+
+# Build output
+build/
+debug/
+release/
+
+# Editor/IDE files
+.idea/
+.vscode/
+
+# Generated documentation
+/doc/
+/target/doc/
+
+# OS and editor specific files
+.DS_Store
+Thumbs.db
