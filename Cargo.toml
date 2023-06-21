@@ -11,3 +11,4 @@ bcrypt = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 regex = "1.4"
+validator = "0.14"

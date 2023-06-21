@@ -3,6 +3,7 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use regex::Regex;
 use std::sync::Mutex;
+use validator::validate_email;
 // In-memory storage for simplicity
 struct AppState {
     users: Mutex<Vec<User>>,
@@ -10,6 +11,7 @@ struct AppState {
 struct User {
     username: String,
     password_hash: String,
+    email: String,
     phone_number: String,
 }
 
@@ -28,6 +30,11 @@ async fn register_user(
     let phone_number_regex = Regex::new(r"^(?:\+254|07|7)\d{8}$").unwrap();
     if !phone_number_regex.is_match(&data.phone_number) {
         return HttpResponse::BadRequest().body("Invalid phone number format");
+    }
+
+    // validate email
+    if !validate_email(&data.email) {
+        return HttpResponse::BadRequest().body("Invalid email format");
     }
     // validate password
     if data.password.len() < 8
@@ -54,6 +61,7 @@ async fn register_user(
         username: data.username.clone(),
         password_hash,
         phone_number: data.phone_number.clone(),
+        email: data.email.clone(),
     };
 
     // Store the user in the state
@@ -66,10 +74,11 @@ async fn login_user(data: web::Json<LoginRequest>, state: web::Data<AppState>) -
     let users = state.users.lock().unwrap();
 
     // Find the user by username
-    let user = match users
-        .iter()
-        .find(|user| user.username == data.username || user.phone_number == data.username)
-    {
+    let user = match users.iter().find(|user| {
+        user.username == data.username
+            || user.phone_number == data.username
+            || user.email == data.username
+    }) {
         Some(user) => user,
         None => return HttpResponse::NotFound().body("User not found"),
     };
@@ -91,6 +100,7 @@ async fn login_user(data: web::Json<LoginRequest>, state: web::Data<AppState>) -
 struct RegisterRequest {
     username: String,
     password: String,
+    email: String,
     confirm_password: String,
     phone_number: String,
 }
