@@ -13,7 +13,10 @@ struct User {
     phone_number: String,
 }
 
-async fn register_user(data: web::Json<RegisterRequest>, state: web::Data<AppState>) -> HttpResponse {
+async fn register_user(
+    data: web::Json<RegisterRequest>,
+    state: web::Data<AppState>,
+) -> HttpResponse {
     let mut users = state.users.lock().unwrap();
 
     // Check if the username is already taken
@@ -27,7 +30,11 @@ async fn register_user(data: web::Json<RegisterRequest>, state: web::Data<AppSta
         return HttpResponse::BadRequest().body("Invalid phone number format");
     }
     // validate password
-    if data.password.len() < 8 || !data.password.chars().any(char::is_uppercase) ||  !data.password.chars().any(char::is_lowercase) || !data.password.chars().any(char::is_numeric) {
+    if data.password.len() < 8
+        || !data.password.chars().any(char::is_uppercase)
+        || !data.password.chars().any(char::is_lowercase)
+        || !data.password.chars().any(char::is_numeric)
+    {
         return HttpResponse::BadRequest().body("password must be at least 8 characters long , contain at least one uppercase lowercase letter and a digit");
     }
     // Hash the password
@@ -39,7 +46,7 @@ async fn register_user(data: web::Json<RegisterRequest>, state: web::Data<AppSta
     // check if the password is the same as the confirm password
 
     if data.password != data.confirm_password {
-        return HttpResponse::BadRequest().body("password and confirm password do not match")
+        return HttpResponse::BadRequest().body("password and confirm password do not match");
     }
 
     // Create a new user
@@ -59,7 +66,10 @@ async fn login_user(data: web::Json<LoginRequest>, state: web::Data<AppState>) -
     let users = state.users.lock().unwrap();
 
     // Find the user by username
-    let user = match users.iter().find(|user| user.username == data.username || user.phone_number == data.username) {
+    let user = match users
+        .iter()
+        .find(|user| user.username == data.username || user.phone_number == data.username)
+    {
         Some(user) => user,
         None => return HttpResponse::NotFound().body("User not found"),
     };
@@ -94,7 +104,9 @@ struct LoginRequest {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Create the initial state
-    let app_state = web::Data::new(AppState { users: Mutex::new(vec![]) });
+    let app_state = web::Data::new(AppState {
+        users: Mutex::new(vec![]),
+    });
 
     // Start the HTTP server
     HttpServer::new(move || {
