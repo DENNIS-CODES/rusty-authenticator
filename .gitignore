@@ -25,3 +25,4 @@ release/
 # OS and editor specific files
 .DS_Store
 Thumbs.db
+.env
