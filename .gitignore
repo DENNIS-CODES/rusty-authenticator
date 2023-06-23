@@ -3,6 +3,7 @@
 /node_modules
 /prisma
 /prisma-cli
+/src/prisma.rs
 # Dependency directories
 Cargo.lock
 Cargo.toml.orig
