@@ -3,12 +3,21 @@ name = "rusty-auth"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[workspace]
+members = ["prisma-cli"]
+resolver = "2"
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 actix-web = "4.0"
-bcrypt = "0.10"
+bcrypt = "0.10.1"
+regex = "1.4.5"
+prisma-client-rust = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.8" }
+chrono = "0.4.19"
+jsonwebtoken = "7.1.0"
+dotenv="0.15.0"
+validator = "0.14"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
-regex = "1.4"
-validator = "0.14"
+
+

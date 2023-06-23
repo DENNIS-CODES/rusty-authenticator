@@ -1,6 +1,8 @@
 # Compiled binary files
 /target/
-
+/node_modules
+/prisma
+/prisma-cli
 # Dependency directories
 Cargo.lock
 Cargo.toml.orig
