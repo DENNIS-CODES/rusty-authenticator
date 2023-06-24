@@ -1,8 +1,5 @@
 # Compiled binary files
 /target/
-/node_modules
-/prisma
-/prisma-cli
 /src/prisma.rs
 # Dependency directories
 Cargo.lock
@@ -25,4 +22,6 @@ release/
 # OS and editor specific files
 .DS_Store
 Thumbs.db
+
+# env file
 .env

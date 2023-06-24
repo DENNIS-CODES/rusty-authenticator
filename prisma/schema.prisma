@@ -1,0 +1,23 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+    provider = "mongodb"
+    url      = env("DATABASE_URL")
+}
+
+generator client {
+    provider = "cargo prisma"
+    output   = "../src/prisma.rs"
+}
+
+model User {
+  id            String   @id @default(cuid()) @map("_id")
+  username      String   @unique
+  password_hash String
+  email         String   @unique
+  phone_number  String   @unique
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+}
+
