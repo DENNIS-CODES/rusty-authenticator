@@ -1,31 +1,23 @@
+#[warn(dead_code)]
 use actix_web::{web, App, HttpResponse, HttpServer};
 use bcrypt::{hash, verify, DEFAULT_COST};
-use chrono::{Duration, Utc};
+use chrono::format::ParseError;
+use chrono::{offset::Utc, DateTime, FixedOffset, Duration};
 use dotenv::dotenv;
 use jsonwebtoken::{encode, EncodingKey, Header};
-use prisma_client_rust::PrismaClient;
+use prisma::PrismaClient;
 use regex::Regex;
 extern crate serde;
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::sync::Mutex;
 use validator::validate_email;
-use uuid::Uuid;
 
-struct AppState {
-    users: Mutex<Vec<User>>,
-}
+#[allow(warnings)]
+mod prisma;
 
-#[derive(Clone)]
-struct User {
-    id: String,
-    username: String,
-    password_hash: String,
-    email: String,
-    phone_number: String,
-    created_at: String,
-    updated_at: String,
-}
+
+
+
 
 #[derive(Deserialize)]
 struct RegisterRequest {
@@ -34,8 +26,8 @@ struct RegisterRequest {
     email: String,
     confirm_password: String,
     phone_number: String,
-    created_at: String,
-    updated_at: String,
+    created_at: DateTime<FixedOffset>,
+    updated_at: DateTime<FixedOffset>,
 }
 
 #[derive(Deserialize)]
@@ -56,22 +48,19 @@ struct AuthPayload {
     iat: i64,
     exp: i64,
 }
-
+fn string_to_datetime(date_string: &str) -> Result<DateTime<FixedOffset>, ParseError> {
+    DateTime::parse_from_rfc3339(date_string)
+}
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
-
-    let client = PrismaClient::new()
+    let client = PrismaClient::_builder()
+        .build()
         .await
         .expect("Failed to create Prisma client.");
 
-    let app_state = web::Data::new(AppState {
-        users: Mutex::new(vec![]),
-    });
-
     HttpServer::new(move || {
         App::new()
-            .app_data(app_state.clone())
             .service(web::resource("/register").route(web::post().to(register_user)))
             .service(web::resource("/login").route(web::post().to(login_user)))
     })
@@ -82,21 +71,16 @@ async fn main() -> std::io::Result<()> {
 
 async fn register_user(
     data: web::Json<RegisterRequest>,
-    state: web::Data<AppState>,
-    db: web::Data<dyn PrismaClient>,
+    db: web::Data<PrismaClient>,
 ) -> HttpResponse {
-    let mut users = state.users.lock().unwrap();
-
     let existing_user = db
         .user()
-        .find_unique(prisma_client_rust::user::username::equals(
-            data.username.clone(),
-        ))
+        .find_unique(prisma::user::username::equals(data.username.clone()))
         .exec()
         .await
         .unwrap();
 
-    if existing_user.is_err() {
+    if existing_user.is_some() {
         return HttpResponse::Conflict().body("Username already taken");
     }
 
@@ -126,38 +110,49 @@ async fn register_user(
         return HttpResponse::BadRequest().body("Passwords do not match");
     }
 
-    let user = User {
-        id: uuid::Uuid::new_v4().to_string(),
-        username: data.username.clone(),
-        password_hash,
-        email: data.email.clone(),
-        phone_number: data.phone_number.clone(),
-        created_at: data.created_at.clone(),
-        updated_at: data.updated_at.clone(),
-    };
+    // Here is where we add the create call
+    let result = db
+        .user()
+        .create(
+            data.username.clone(),
+            password_hash,
+            data.email.clone(),
+            data.phone_number.clone(),
+            // All other fields can be passed in the last argument
+            vec![
+                prisma::user::id::set(uuid::Uuid::new_v4().to_string()),
+                prisma::user::created_at::set(data.created_at),
+                prisma::user::updated_at::set(data.updated_at),
+            ],
+        )
+        .exec()
+        .await;
 
-    users.push(user.clone());
-
-    HttpResponse::Ok().body("User registered successfully")
+    match result {
+        Ok(result) => HttpResponse::Ok().body("User registered successfully"),
+        Err(_) => HttpResponse::InternalServerError().body("Failed to create user"),
+    }
 }
 
 async fn login_user(
     data: web::Json<LoginRequest>,
-    state: web::Data<AppState>,
-    db: web::Data<dyn PrismaClient>,
+    db: web::Data<PrismaClient>,
 ) -> HttpResponse {
-    let users = state.users.lock().unwrap();
-
-    let user = db
+    let user_result = db
         .user()
-        .find_unique(prisma_client_rust::user::username::equals(
-            data.username.clone(),
-        ))
+        .find_unique(prisma::user::username::equals(data.username.clone()))
         .exec()
-        .await
-        .unwrap();
+        .await;
 
-    if let Ok(user) = user {
+    if let Err(_) = user_result {
+        // Error occurred while fetching from the database.
+        return HttpResponse::InternalServerError()
+            .body("Error occurred while fetching from the database");
+    }
+
+    let user = user_result.unwrap(); // Safe to use unwrap here because we've handled the error case above.
+
+    if let Some(user) = user {
         if let Ok(matches) = verify(&data.password, &user.password_hash) {
             if matches {
                 let header = Header::default();
