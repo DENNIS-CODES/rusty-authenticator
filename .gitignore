@@ -24,4 +24,7 @@ release/
 Thumbs.db
 
 # env file
-.env
+*.env
+*.env.example
+*.env.local
+*.env.staging
