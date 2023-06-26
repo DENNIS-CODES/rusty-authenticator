@@ -2,7 +2,7 @@
 use actix_web::{web, App, HttpResponse, HttpServer};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::format::ParseError;
-use chrono::{offset::Utc, DateTime, FixedOffset, Duration};
+use chrono::{offset::Utc, DateTime, Duration, FixedOffset};
 use dotenv::dotenv;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use prisma::PrismaClient;
@@ -14,10 +14,6 @@ use validator::validate_email;
 
 #[allow(warnings)]
 mod prisma;
-
-
-
-
 
 #[derive(Deserialize)]
 struct RegisterRequest {
@@ -48,7 +44,7 @@ struct AuthPayload {
     iat: i64,
     exp: i64,
 }
-fn string_to_datetime(date_string: &str) -> Result<DateTime<FixedOffset>, ParseError> {
+fn _string_to_datetime(date_string: &str) -> Result<DateTime<FixedOffset>, ParseError> {
     DateTime::parse_from_rfc3339(date_string)
 }
 #[actix_web::main]
@@ -58,7 +54,22 @@ async fn main() -> std::io::Result<()> {
         .build()
         .await
         .expect("Failed to create Prisma client.");
-
+    let new_user = client
+        .user()
+        .create(
+            "wanda".to_owned(),
+            "secret354".to_owned(),
+            "dennis@indu.io".to_owned(),
+            "0762354261".to_owned(),
+            vec![
+                prisma::user::id::set(uuid::Uuid::new_v4().to_string()),
+                prisma::user::created_at::set(Utc::now().into()),
+                prisma::user::updated_at::set(Utc::now().into()),
+            ],
+        )
+        .exec()
+        .await;
+    println!("{:#?}", new_user);
     HttpServer::new(move || {
         App::new()
             .service(web::resource("/register").route(web::post().to(register_user)))
@@ -134,10 +145,7 @@ async fn register_user(
     }
 }
 
-async fn login_user(
-    data: web::Json<LoginRequest>,
-    db: web::Data<PrismaClient>,
-) -> HttpResponse {
+async fn login_user(data: web::Json<LoginRequest>, db: web::Data<PrismaClient>) -> HttpResponse {
     let user_result = db
         .user()
         .find_unique(prisma::user::username::equals(data.username.clone()))
