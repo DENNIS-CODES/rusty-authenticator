@@ -6,44 +6,25 @@ use chrono::{offset::Utc, DateTime, Duration, FixedOffset};
 use dotenv::dotenv;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use prisma::PrismaClient;
-use regex::Regex;
 extern crate serde;
-use serde::{Deserialize, Serialize};
+
 use std::env;
-use validator::validate_email;
+mod types {
+    pub mod user;
+}
+use types::user::{AuthPayload, LoginRequest, LoginResponse, RegisterRequest};
+
+mod middlewares {
+    pub mod validation;
+}
+
+use middlewares::validation::{
+    is_valid_email, is_valid_password, is_valid_phone_number, is_valid_username,
+};
 
 #[allow(warnings)]
 mod prisma;
 
-#[derive(Deserialize)]
-struct RegisterRequest {
-    username: String,
-    password: String,
-    email: String,
-    confirm_password: String,
-    phone_number: String,
-    created_at: DateTime<FixedOffset>,
-    updated_at: DateTime<FixedOffset>,
-}
-
-#[derive(Deserialize)]
-struct LoginRequest {
-    username: String,
-    password: String,
-}
-
-#[derive(Serialize)]
-struct LoginResponse {
-    token: String,
-    msg: String,
-}
-
-#[derive(Serialize)]
-struct AuthPayload {
-    sub: String,
-    iat: i64,
-    exp: i64,
-}
 fn _string_to_datetime(date_string: &str) -> Result<DateTime<FixedOffset>, ParseError> {
     DateTime::parse_from_rfc3339(date_string)
 }
@@ -84,6 +65,10 @@ async fn register_user(
     data: web::Json<RegisterRequest>,
     db: web::Data<PrismaClient>,
 ) -> HttpResponse {
+    if !is_valid_username(&data.username) {
+        return HttpResponse::BadRequest().body("Invalid username format");
+    }
+
     let existing_user = db
         .user()
         .find_unique(prisma::user::username::equals(data.username.clone()))
@@ -95,21 +80,16 @@ async fn register_user(
         return HttpResponse::Conflict().body("Username already taken");
     }
 
-    let phone_number_regex = Regex::new(r"^(?:\+254|07|7)\d{8}$").unwrap();
-    if !phone_number_regex.is_match(&data.phone_number) {
+    if !is_valid_phone_number(&data.phone_number) {
         return HttpResponse::BadRequest().body("Invalid phone number format");
     }
 
-    if !validate_email(&data.email) {
+    if !is_valid_email(&data.email) {
         return HttpResponse::BadRequest().body("Invalid email format");
     }
 
-    if data.password.len() < 8
-        || !data.password.chars().any(char::is_uppercase)
-        || !data.password.chars().any(char::is_lowercase)
-        || !data.password.chars().any(char::is_numeric)
-    {
-        return HttpResponse::BadRequest().body("Password must be at least 8 characters long, contain at least one uppercase letter, one lowercase letter, and a digit");
+    if !is_valid_password(&data.password, &data.confirm_password).is_ok() {
+        return HttpResponse::BadRequest().body("Invalid password format");
     }
 
     let password_hash = match hash(&data.password, DEFAULT_COST) {
@@ -121,7 +101,10 @@ async fn register_user(
         return HttpResponse::BadRequest().body("Passwords do not match");
     }
 
-    // Here is where we add the create call
+    let offset = FixedOffset::east_opt(3 * 3600).expect("Invalid time offset");
+    let created_at_fixed_offset = DateTime::<FixedOffset>::from_utc(data.created_at, offset);
+    let updated_at_fixed_offset = DateTime::<FixedOffset>::from_utc(data.updated_at, offset);
+
     let result = db
         .user()
         .create(
@@ -129,18 +112,17 @@ async fn register_user(
             password_hash,
             data.email.clone(),
             data.phone_number.clone(),
-            // All other fields can be passed in the last argument
             vec![
                 prisma::user::id::set(uuid::Uuid::new_v4().to_string()),
-                prisma::user::created_at::set(data.created_at),
-                prisma::user::updated_at::set(data.updated_at),
+                prisma::user::created_at::set(created_at_fixed_offset),
+                prisma::user::updated_at::set(updated_at_fixed_offset),
             ],
         )
         .exec()
         .await;
 
     match result {
-        Ok(result) => HttpResponse::Ok().body("User registered successfully"),
+        Ok(_) => HttpResponse::Ok().body("User registered successfully"),
         Err(_) => HttpResponse::InternalServerError().body("Failed to create user"),
     }
 }
